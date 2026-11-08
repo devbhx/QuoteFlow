@@ -1,6 +1,7 @@
 
 from decimal import Decimal, InvalidOperation
 from calculos import calcular_subtotal, calcular_desconto, calcular_total
+from formatacao import formatar_moeda
 
 
 # ===== FUNÇÕES DE VALIDAÇÃO =====
@@ -130,13 +131,13 @@ print("Cliente:", cliente)
 
 for servico in servicos:
     print("\nServiço:", servico["nome"])
-    print("Valor unitário: R$", f'{servico["valor_unitario"]:.2f}')
+    print("Valor unitário:", formatar_moeda(servico["valor_unitario"]))
     print("Quantidade:", servico["quantidade"])
-    print("Subtotal: R$", f'{servico["subtotal"]:.2f}')
+    print("Subtotal:", formatar_moeda(servico["subtotal"]))
 
 print("\n-------------------------------")
-print("Subtotal geral: R$", f"{subtotal_geral:.2f}")
+print("Subtotal geral:", formatar_moeda(subtotal_geral))
 print("Desconto (%):", f"{percentual_desconto}%")
-print("Valor do desconto: R$", f"{valor_desconto:.2f}")
-print("TOTAL FINAL: R$", f"{total:.2f}")
+print("Valor do desconto:", formatar_moeda(valor_desconto))
+print("TOTAL FINAL:", formatar_moeda(total))
 print("===============================")

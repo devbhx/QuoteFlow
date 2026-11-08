@@ -1,16 +1,24 @@
-from decimal import Decimal
+
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def arredondar_moeda(valor):
+    return valor.quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP
+    )
 
 
 def calcular_subtotal(valor_unitario, quantidade):
     subtotal = valor_unitario * quantidade
-    return subtotal
+    return arredondar_moeda(subtotal)
 
 
 def calcular_desconto(subtotal, percentual):
     desconto = subtotal * (percentual / Decimal("100"))
-    return desconto
+    return arredondar_moeda(desconto)
 
 
 def calcular_total(subtotal, valor_desconto):
     total = subtotal - valor_desconto
-    return total
+    return arredondar_moeda(total)
