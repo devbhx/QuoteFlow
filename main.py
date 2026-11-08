@@ -1,6 +1,6 @@
 
 from decimal import Decimal, InvalidOperation
-from calculos import calcular_subtotal, calcular_desconto, calcular_total
+from orcamento import criar_item, calcular_orcamento
 from formatacao import formatar_moeda
 
 
@@ -80,6 +80,7 @@ def deseja_adicionar_outro():
         print("Erro: digite apenas 's' ou 'n'.")
 
 
+
 # ===== ENTRADA DE DADOS =====
 
 print("===== BEM-VINDO AO QUOTEFLOW =====")
@@ -87,7 +88,6 @@ print("===== BEM-VINDO AO QUOTEFLOW =====")
 cliente = ler_nome("Digite o nome do cliente: ")
 
 servicos = []
-subtotal_geral = Decimal("0")
 
 while True:
     print("\n===== NOVO SERVIÇO =====")
@@ -96,17 +96,13 @@ while True:
     valor_unitario = ler_valor_unitario()
     quantidade = ler_quantidade()
 
-    subtotal = calcular_subtotal(valor_unitario, quantidade)
+    item = criar_item(
+        nome_servico,
+        quantidade,
+        valor_unitario
+    )
 
-    servico = {
-        "nome": nome_servico,
-        "valor_unitario": valor_unitario,
-        "quantidade": quantidade,
-        "subtotal": subtotal
-    }
-
-    servicos.append(servico)
-    subtotal_geral += subtotal
+    servicos.append(item)
 
     if not deseja_adicionar_outro():
         break
@@ -115,13 +111,13 @@ while True:
 # ===== PROCESSAMENTO =====
 
 print("\n===== DESCONTO =====")
+
 percentual_desconto = ler_desconto()
 
-valor_desconto = calcular_desconto(
-    subtotal_geral, percentual_desconto
+orcamento = calcular_orcamento(
+    servicos,
+    percentual_desconto
 )
-
-total = calcular_total(subtotal_geral, valor_desconto)
 
 
 # ===== SAÍDA DE DADOS =====
@@ -129,15 +125,16 @@ total = calcular_total(subtotal_geral, valor_desconto)
 print("\n========== ORÇAMENTO ==========")
 print("Cliente:", cliente)
 
-for servico in servicos:
+for servico in orcamento["servicos"]:
     print("\nServiço:", servico["nome"])
     print("Valor unitário:", formatar_moeda(servico["valor_unitario"]))
     print("Quantidade:", servico["quantidade"])
     print("Subtotal:", formatar_moeda(servico["subtotal"]))
 
 print("\n-------------------------------")
-print("Subtotal geral:", formatar_moeda(subtotal_geral))
-print("Desconto (%):", f"{percentual_desconto}%")
-print("Valor do desconto:", formatar_moeda(valor_desconto))
-print("TOTAL FINAL:", formatar_moeda(total))
+print("Subtotal geral:", formatar_moeda(orcamento["subtotal_geral"]))
+print("Desconto (%):", f'{orcamento["percentual_desconto"]}%')
+print("Valor do desconto:", formatar_moeda(orcamento["valor_desconto"]))
+print("TOTAL FINAL:", formatar_moeda(orcamento["total"]))
 print("===============================")
+
