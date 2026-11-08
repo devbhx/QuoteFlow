@@ -1,25 +1,82 @@
 
-# FUNÇÃO PARA CALCULAR O DESCONTO
-def calcular_desconto(subtotal, percentual):
-    desconto = subtotal * (percentual / 100)
-    return desconto
+from decimal import Decimal, InvalidOperation
+from calculos import calcular_subtotal
 
+servicos = []
+total_orcamento = Decimal("0")
 
-# FUNÇÃO PARA CALCULAR O TOTAL
-def calcular_total(subtotal, valor_desconto):
-    total = subtotal - valor_desconto
-    return total
+print("=== QUOTEFLOW ===")
+print("Cadastro de serviços\n")
 
+while True:
+    nome = input("Nome do serviço: ").strip()
 
-# CHAMADA DAS FUNÇÕES
-subtotal = 200
-percentual = 15
+    if not nome:
+        print("O nome do serviço não pode ficar vazio.")
+        continue
 
-valor_desconto = calcular_desconto(subtotal, percentual)
-valor_total = calcular_total(subtotal, valor_desconto)
+    while True:
+        try:
+            quantidade = int(input("Quantidade: "))
 
+            if quantidade <= 0:
+                print("A quantidade deve ser maior que zero.")
+                continue
 
-# SAÍDA
-print("Subtotal: R$", subtotal)
-print("Desconto: R$", valor_desconto)
-print("Total final: R$", valor_total)
+            break
+
+        except ValueError:
+            print("Digite uma quantidade inteira válida.")
+
+    while True:
+        try:
+            valor_unitario = Decimal(
+                input("Valor unitário: ").strip().replace(",", ".")
+            )
+
+            if not valor_unitario.is_finite() or valor_unitario <= 0:
+                print("O valor deve ser um número positivo e finito.")
+                continue
+
+            break
+
+        except InvalidOperation:
+            print("Digite um valor monetário válido.")
+
+    subtotal = calcular_subtotal(valor_unitario, quantidade)
+
+    servico = {
+        "nome": nome,
+        "quantidade": quantidade,
+        "valor_unitario": valor_unitario,
+        "subtotal": subtotal
+    }
+
+    servicos.append(servico)
+    total_orcamento += subtotal
+
+    while True:
+        continuar = input(
+            "\nDeseja adicionar outro serviço? (s/n): "
+        ).strip().lower()
+
+        if continuar in ("s", "n"):
+            break
+
+        print("Resposta inválida! Digite apenas 's' ou 'n'.")
+
+    if continuar == "n":
+        break
+
+    print()
+
+print("\n=== RESUMO DO ORÇAMENTO ===")
+
+for servico in servicos:
+    print(f"\nServiço: {servico['nome']}")
+    print(f"Quantidade: {servico['quantidade']}")
+    print(f"Valor unitário: R$ {servico['valor_unitario']:.2f}")
+    print(f"Subtotal: R$ {servico['subtotal']:.2f}")
+
+print("\n-----------------------------")
+print(f"TOTAL DO ORÇAMENTO: R$ {total_orcamento:.2f}")
