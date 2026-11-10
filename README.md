@@ -3,7 +3,7 @@
 MVP local de criação e gerenciamento de orçamentos para prestadores de serviços e pequenos negócios, desenvolvido em Python para estudo e portfólio.
 
 > **Status:** MVP de terminal com persistência SQLite e gestão básica de orçamentos.
-> **Validação atual:** 294 testes automatizados aprovados no ambiente de referência.
+> **Validação atual:** 361 testes automatizados aprovados no ambiente de referência.
 
 ## Sobre o projeto
 
@@ -28,6 +28,7 @@ introduzir funcionalidades proprietárias, integrações e infraestrutura comerc
 - Inclusão e remoção de itens; confirmação de remoção e proteção do último item.
 - Validações numéricas e gravações em transações.
 - Atualização automática de bancos antigos para status e campos comerciais.
+- Cadastro e edição de clientes, busca parcial, vínculo opcional e histórico de propostas por ID.
 - Configuração local do nome e contato do prestador.
 - Validade, condições de pagamento e observações opcionais por orçamento.
 - Exportação local em PDF A4, com tabelas, múltiplas páginas e fontes com acentos.
@@ -38,8 +39,8 @@ introduzir funcionalidades proprietárias, integrações e infraestrutura comerc
 A aplicação funciona localmente, com um banco por instalação. Não há autenticação,
 autorização por usuário, isolamento por empresa, acesso externo do cliente,
 aprovação por link, interface web, assinaturas ou pagamentos.
-O nome do cliente fica em cada orçamento; não há cadastro independente de clientes
-nem histórico de alterações. As operações administrativas estão disponíveis para
+O vínculo com clientes é opcional. O nome continua guardado em cada proposta
+para preservar a identificação usada na emissão. Não há histórico de alterações. As operações administrativas estão disponíveis para
 quem tem acesso ao programa local. O MVP não está preparado para exposição como
 serviço web ou uso simultâneo por múltiplas empresas.
 
@@ -117,7 +118,8 @@ novos totais antes de gravar.
 
 Ao executar `python main.py`, o menu oferece:
 
-1. Criar e salvar orçamento: ao concluir um orçamento válido, informa seu número.
+1. Criar e salvar orçamento: informe um nome ou `id:NUMERO` para selecionar um cliente cadastrado.
+   Ao concluir um orçamento válido, informa seu número.
 2. Listar orçamentos: permite filtrar por `pendente`, `aprovado` ou `recusado`;
    pressione Enter para listar todos. Mostra número, cliente, data, quantidade de
    serviços e status. Em seguida, permite buscar por parte do nome do cliente,
@@ -134,6 +136,11 @@ Ao executar `python main.py`, o menu oferece:
 10. Configurar prestador: nome obrigatório e contato opcional.
 11. Editar validade, pagamento e observações de um orçamento salvo.
 12. Exportar orçamento em PDF: requer o nome do prestador configurado na opção 10.
+13. Cadastrar cliente: nome obrigatório e contato opcional.
+14. Listar ou buscar clientes: parte do nome ou Enter para listar todos.
+15. Histórico de orçamentos: consulta por ID do cliente cadastrado.
+16. Editar cadastro do cliente: nome e contato, preservando o ID e os dados das propostas.
+17. Vincular proposta a cliente cadastrado: associação explícita com confirmação.
 0. Sair.
 
 O arquivo `quoteflow.db` é criado automaticamente ao lado de `main.py`,
@@ -145,7 +152,8 @@ Os testes usam bancos temporários, sem acessar os dados reais.
 
 | Tabela | Campos principais | Responsabilidade |
 |---|---|---|
-| `orcamentos` | `id`, `cliente`, `percentual_desconto`, `criado_em`, `status`, `validade`, `condicoes_pagamento`, `observacoes` | Identificação e dados gerais |
+| `orcamentos` | `id`, `cliente`, `cliente_id`, `percentual_desconto`, `criado_em`, `status`, `validade`, `condicoes_pagamento`, `observacoes` | Identificação e dados gerais |
+| `clientes` | `id`, `nome`, `contato`, `criado_em` | Cadastro independente de pessoas/empresas |
 | `configuracao_prestador` | `id` fixo em 1, `nome`, `contato` | Configuração local reutilizável |
 | `itens_orcamento` | `id`, `orcamento_id`, `nome`, `quantidade`, `valor_unitario_centavos` | Serviços de cada orçamento |
 
@@ -170,8 +178,61 @@ consultar identificadores; tratar ausência e falhas de gravação.
 Os testes verificam persistência, precisão monetária, isolamento entre orçamentos,
 transações e o fluxo do menu.
 
-Esta etapa mantém o nome do cliente em cada orçamento. Cadastro independente
-de clientes e exclusão de orçamentos inteiros serão especificados em etapas futuras.
+O nome do cliente é mantido em cada orçamento, com vínculo opcional pelo campo
+`cliente_id`. A exclusão de orçamentos inteiros será especificada em uma etapa futura.
+
+## Cadastro e busca de clientes
+
+A opção 13 cadastra uma pessoa ou empresa com nome obrigatório e contato opcional.
+O contato é texto livre, para telefone, e-mail ou outro meio de contato. Cada
+cadastro recebe um ID e uma data de criação em UTC. Pessoas com o mesmo nome
+podem ter cadastros distintos; nomes não são utilizados como identificadores.
+
+A opção 14 lista todos, do ID mais recente para o mais antigo, ou busca por parte
+do nome. Enter lista todos. `%`, `_` e `!` são caracteres literais na busca.
+Assim como no filtro de orçamentos, a busca ignora diferenças de caixa ASCII,
+mas não normaliza acentos ou letras Unicode.
+
+Ao criar uma proposta pela opção 1, digite `id:1` para selecionar o cadastro de
+ID 1, ou digite diretamente um nome para continuar sem vínculo. A opção 14 permite
+consultar os IDs disponíveis. Nomes antigos não são importados, unidos ou associados
+automaticamente. O cadastro não permite exclusão de clientes nesta etapa.
+
+A opção 15 apresenta apenas os orçamentos vinculados ao ID escolhido, mesmo quando
+outros clientes têm nomes iguais. A duplicação mantém o vínculo e o nome original
+da proposta. Esse nome é uma cópia histórica: uma futura mudança no cadastro não
+altera os nomes das propostas existentes nem seus PDFs. A opção 6 preserva o vínculo
+ao mudar apenas o desconto ou manter o mesmo nome; se o nome mudar manualmente,
+o vínculo é removido sem alterar o cadastro. O terminal avisa sobre essa regra.
+
+Bancos antigos recebem uma coluna opcional `cliente_id`, com chave estrangeira para
+`clientes`, inicialmente vazia em todas as propostas existentes. Nenhuma proposta
+antiga é associada com base no nome. Os testes usam bancos temporários e dados fictícios.
+
+### Edição de clientes
+
+Na opção 16, informe o ID e confira os dados atuais. Enter mantém o campo;
+`-` limpa o contato opcional. O nome é obrigatório e espaços sozinhos são rejeitados.
+A atualização grava nome e contato juntos, preservando ID e data do cadastro.
+Somente o cliente selecionado é alterado.
+
+As propostas existentes continuam vinculadas ao ID e preservam o nome registrado
+na emissão, inclusive ao gerar novos PDFs dessas propostas. Novos orçamentos
+criados com `id:NUMERO` usam o nome atualizado. A duplicação mantém o nome histórico
+do original. Não há atualização retroativa dos documentos nem dos nomes das propostas.
+
+### Associação explícita de propostas
+
+A opção 17 recebe o número da proposta e o ID do cliente. Exibe o nome histórico
+da proposta, o cliente escolhido e seu contato. Se já houver vínculo com outro ID,
+avisa que ele será substituído. A operação exige confirmação com `s`; `n` cancela.
+Se o vínculo já for o mesmo, apenas informa que a proposta já está associada.
+
+A gravação altera somente `cliente_id`. Nome histórico, serviços, cálculos, status,
+datas e campos comerciais permanecem iguais; nenhum arquivo de PDF é modificado.
+O histórico da opção 15 reflete a associação, incluindo a saída do histórico do
+cliente anterior quando o vínculo é substituído. Não há associação automática
+por nome nem alteração retroativa dos documentos.
 
 ## Status dos orçamentos
 
@@ -322,7 +383,8 @@ A publicação do MVP e a separação da versão comercial são revisadas antes 
 
 ## Próximas etapas
 
-- Avaliar o primeiro PDF com exemplos de uso e priorizar melhorias de apresentação.
+- Avaliar o fluxo completo de clientes e propostas antes de priorizar novos recursos.
+- Avaliar melhorias do PDF conforme necessidades de uso.
 - Especificar os próximos recursos antes da implementação.
 - Planejar a separação público/privado antes da fase comercial e da evolução para web.
 

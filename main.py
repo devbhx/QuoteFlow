@@ -10,7 +10,8 @@ from repositorio import (
     CAMINHO_BANCO, abrir_banco, salvar_orcamento, listar_orcamentos, buscar_orcamento,
     alterar_status, validar_identificador, duplicar_orcamento, editar_orcamento,
     listar_itens_orcamento, editar_item, adicionar_item, remover_item,
-    buscar_prestador, salvar_prestador, editar_condicoes
+    buscar_prestador, salvar_prestador, editar_condicoes, cadastrar_cliente, listar_clientes, buscar_cliente,
+    editar_cliente, vincular_cliente
 )
 
 
@@ -87,12 +88,33 @@ def deseja_adicionar_outro():
 
 
 
-def criar_orcamento():
+def criar_orcamento(conexao=None):
     # ===== ENTRADA DE DADOS =====
 
     print("===== BEM-VINDO AO QUOTEFLOW =====")
 
-    cliente = ler_nome("Digite o nome do cliente: ")
+    cliente_id = None
+    if conexao is None:
+        cliente = ler_nome("Digite o nome do cliente: ")
+    else:
+        while True:
+            entrada = ler_nome("Digite o nome do cliente ou id:NUMERO para usar um cadastro: ")
+            if not entrada.lower().startswith("id:"):
+                cliente_id = None
+                cliente = entrada
+                break
+            try:
+                cliente_id = int(entrada[3:].strip())
+                cadastrado = buscar_cliente(conexao, cliente_id)
+            except ValueError:
+                print("Erro: informe um ID de cliente inteiro positivo válido.")
+                continue
+            if cadastrado is None:
+                print("Cliente cadastrado não encontrado. Use a opção 14 para consultar IDs.")
+                continue
+            cliente = cadastrado["nome"]
+            print(f"Cliente selecionado: #{cliente_id} | {cliente}")
+            break
 
     servicos = []
 
@@ -128,6 +150,7 @@ def criar_orcamento():
         return
 
 
+    orcamento["cliente_id"] = cliente_id
     exibir_orcamento(cliente, orcamento)
     return cliente, orcamento
 
@@ -168,6 +191,8 @@ def consultar_orcamento(conexao):
         return
     print(f"Orçamento #{orcamento['id']} — {formatar_data(orcamento['criado_em'])}")
     print("Status:", orcamento["status"])
+    if orcamento["cliente_id"] is not None:
+        print("Cliente cadastrado ID:", orcamento["cliente_id"])
     if orcamento["validade"]:
         print("Validade:", datetime.strptime(orcamento["validade"], "%Y-%m-%d").strftime("%d/%m/%Y"))
     if orcamento["condicoes_pagamento"]:
@@ -230,6 +255,8 @@ def editar_orcamento_no_terminal(conexao):
         print("Orçamento não encontrado.")
         return
     print(f"Cliente atual: {original['cliente']}")
+    if original["cliente_id"] is not None:
+        print("Alterar o nome manualmente desfaz o vínculo com o cadastro do cliente.")
     print(f"Desconto atual: {original['percentual_desconto']}%")
     entrada_cliente = input("Novo cliente (Enter para manter): ")
     cliente = original["cliente"] if entrada_cliente == "" else entrada_cliente.strip()
@@ -461,6 +488,119 @@ def exportar_pdf_no_terminal(conexao):
         print(f"PDF exportado: {caminho}")
 
 
+def cadastrar_cliente_no_terminal(conexao):
+    nome = ler_nome("Nome do cliente: ")
+    contato = input("Contato (opcional): ").strip()
+    identificador = cadastrar_cliente(conexao, nome, contato)
+    print(f"Cliente cadastrado com o número {identificador}.")
+
+
+def listar_clientes_no_terminal(conexao):
+    nome = input("Nome ou parte do nome (Enter para todos): ").strip()
+    clientes = listar_clientes(conexao, nome=nome or None)
+    if not clientes:
+        print("Nenhum cliente encontrado." if nome else "Nenhum cliente cadastrado.")
+        return
+    for cliente in clientes:
+        print(f"#{cliente['id']} | {cliente['nome']} | "
+              f"{cliente['contato'] or 'Contato não informado'}")
+
+
+def historico_cliente_no_terminal(conexao):
+    try:
+        identificador = int(input("ID do cliente: "))
+        cliente = buscar_cliente(conexao, identificador)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    if cliente is None:
+        print("Cliente cadastrado não encontrado.")
+        return
+    print(f"Histórico do cliente #{identificador} | {cliente['nome']}")
+    registros = listar_orcamentos(conexao, cliente_id=identificador)
+    if not registros:
+        print("Nenhum orçamento vinculado a este cliente.")
+        return
+    for registro in registros:
+        print(f"#{registro['id']} | {registro['cliente']} | "
+              f"{formatar_data(registro['criado_em'])} | {registro['status']}")
+
+
+def editar_cliente_no_terminal(conexao):
+    try:
+        identificador = int(input("ID do cliente a editar: "))
+        atual = buscar_cliente(conexao, identificador)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    if atual is None:
+        print("Cliente cadastrado não encontrado.")
+        return
+    print(f"Nome atual: {atual['nome']}")
+    print(f"Contato atual: {atual['contato'] or 'não informado'}")
+    print("Os nomes registrados nos orçamentos existentes serão preservados.")
+    nome = input("Novo nome (Enter para manter): ")
+    contato = input("Novo contato (Enter para manter, - para limpar): ")
+    nome = atual["nome"] if nome == "" else nome
+    contato = atual["contato"] if contato == "" else ("" if contato.strip() == "-" else contato)
+    try:
+        encontrado = editar_cliente(conexao, identificador, nome, contato)
+    except ValueError as erro:
+        print(f"Erro: {erro} Nenhuma alteração foi salva.")
+        return
+    if encontrado:
+        print(f"Cliente #{identificador} atualizado.")
+    else:
+        print("Cliente cadastrado não encontrado.")
+
+
+def vincular_cliente_no_terminal(conexao):
+    try:
+        orcamento_id = int(input("Número do orçamento a vincular: "))
+        orcamento = buscar_orcamento(conexao, orcamento_id)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    if orcamento is None:
+        print("Orçamento não encontrado.")
+        return
+    try:
+        cliente_id = int(input("ID do cliente cadastrado: "))
+        cliente = buscar_cliente(conexao, cliente_id)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    if cliente is None:
+        print("Cliente cadastrado não encontrado.")
+        return
+    print(f"Orçamento #{orcamento_id} | Nome registrado: {orcamento['cliente']}")
+    print(f"Cliente escolhido: #{cliente_id} | {cliente['nome']} | "
+          f"{cliente['contato'] or 'Contato não informado'}")
+    if orcamento["cliente_id"] is not None:
+        if orcamento["cliente_id"] == cliente_id:
+            print("Este orçamento já está vinculado a este cliente.")
+            return
+        print(f"Atenção: o vínculo atual com o cliente #{orcamento['cliente_id']} será substituído.")
+    print("O nome registrado na proposta e os demais dados serão preservados.")
+    while True:
+        resposta = input("Confirmar vínculo? (s/n): ").strip().lower()
+        if resposta in ("s", "n"):
+            break
+        print("Erro: digite apenas 's' ou 'n'.")
+    if resposta == "n":
+        print("Associação cancelada.")
+        return
+    try:
+        encontrado = vincular_cliente(conexao, orcamento_id, cliente_id)
+    except ValueError as erro:
+        print(f"Erro: {erro} Nenhuma alteração foi salva.")
+        return
+    if encontrado:
+        print(f"Orçamento #{orcamento_id} vinculado ao cliente #{cliente_id}.")
+    else:
+        print("Orçamento não encontrado.")
+
+
 def main(caminho_banco=CAMINHO_BANCO):
     try:
         conexao = abrir_banco(caminho_banco)
@@ -483,16 +623,23 @@ def main(caminho_banco=CAMINHO_BANCO):
             print("10 - Configurar prestador")
             print("11 - Editar validade, pagamento e observações")
             print("12 - Exportar orçamento em PDF")
+            print("13 - Cadastrar cliente")
+            print("14 - Listar ou buscar clientes")
+            print("15 - Histórico de orçamentos do cliente")
+            print("16 - Editar cadastro do cliente")
+            print("17 - Vincular orçamento a cliente cadastrado")
             print("0 - Sair")
             opcao = input("Escolha uma opção: ").strip()
             try:
                 if opcao == "1":
-                    resultado = criar_orcamento()
+                    resultado = criar_orcamento(conexao)
                     if resultado is not None:
                         cliente, orcamento = resultado
                         identificador = salvar_orcamento(
                             conexao, cliente, orcamento["servicos"],
                             orcamento["percentual_desconto"],
+                            **({"cliente_id": orcamento["cliente_id"]}
+                               if orcamento["cliente_id"] is not None else {}),
                         )
                         print(f"Orçamento salvo com o número {identificador}.")
                 elif opcao == "2":
@@ -544,10 +691,20 @@ def main(caminho_banco=CAMINHO_BANCO):
                     editar_condicoes_no_terminal(conexao)
                 elif opcao == "12":
                     exportar_pdf_no_terminal(conexao)
+                elif opcao == "13":
+                    cadastrar_cliente_no_terminal(conexao)
+                elif opcao == "14":
+                    listar_clientes_no_terminal(conexao)
+                elif opcao == "15":
+                    historico_cliente_no_terminal(conexao)
+                elif opcao == "16":
+                    editar_cliente_no_terminal(conexao)
+                elif opcao == "17":
+                    vincular_cliente_no_terminal(conexao)
                 elif opcao == "0":
                     break
                 else:
-                    print("Erro: escolha uma opção entre 0 e 12.")
+                    print("Erro: escolha uma opção entre 0 e 17.")
             except sqlite3.Error:
                 print("Erro ao acessar o banco. A operação não foi concluída. "
                       "Se estava criando um orçamento, ele não foi salvo.")

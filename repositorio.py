@@ -22,6 +22,7 @@ def abrir_banco(caminho=CAMINHO_BANCO):
             CREATE TABLE IF NOT EXISTS orcamentos (
                 id INTEGER PRIMARY KEY,
                 cliente TEXT NOT NULL CHECK (length(trim(cliente)) > 0),
+                cliente_id INTEGER REFERENCES clientes(id),
                 percentual_desconto TEXT NOT NULL,
                 criado_em TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pendente'
@@ -29,6 +30,12 @@ def abrir_banco(caminho=CAMINHO_BANCO):
                 validade TEXT,
                 condicoes_pagamento TEXT NOT NULL DEFAULT '',
                 observacoes TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS clientes (
+                id INTEGER PRIMARY KEY,
+                nome TEXT NOT NULL CHECK (length(trim(nome)) > 0),
+                contato TEXT NOT NULL DEFAULT '',
+                criado_em TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS configuracao_prestador (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -67,6 +74,7 @@ def atualizar_estrutura(conexao):
         nomes = {coluna["name"] for coluna in colunas}
         # Definições fixas do programa, nunca fornecidas pelo usuário.
         novas_colunas = {
+            "cliente_id": "cliente_id INTEGER REFERENCES clientes(id)",
             "validade": "validade TEXT",
             "condicoes_pagamento": "condicoes_pagamento TEXT NOT NULL DEFAULT ''",
             "observacoes": "observacoes TEXT NOT NULL DEFAULT ''",
@@ -77,10 +85,14 @@ def atualizar_estrutura(conexao):
 
 
 def salvar_orcamento(conexao, cliente, servicos, percentual_desconto, *,
-                     validade=None, condicoes_pagamento="", observacoes=""):
+                     validade=None, condicoes_pagamento="", observacoes="", cliente_id=None):
     """Salva cabeçalho e itens juntos: qualquer falha desfaz toda a gravação."""
     if not isinstance(cliente, str) or not cliente.strip():
         raise ValueError("O nome do cliente não pode ficar vazio.")
+    if cliente_id is not None:
+        validar_identificador(cliente_id)
+        if buscar_cliente(conexao, cliente_id) is None:
+            raise ValueError("Cliente cadastrado não encontrado.")
     orcamento = calcular_orcamento(servicos, percentual_desconto)
     emissao = datetime.now(timezone.utc)
     validade, condicoes_pagamento, observacoes = validar_condicoes(
@@ -93,10 +105,10 @@ def salvar_orcamento(conexao, cliente, servicos, percentual_desconto, *,
     with conexao:
         cursor = conexao.execute(
             """INSERT INTO orcamentos
-               (cliente, percentual_desconto, criado_em, validade, condicoes_pagamento, observacoes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (cliente, percentual_desconto, criado_em, validade, condicoes_pagamento, observacoes, cliente_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (cliente.strip(), str(percentual_desconto), criado_em,
-             validade, condicoes_pagamento, observacoes),
+             validade, condicoes_pagamento, observacoes, cliente_id),
         )
         identificador = cursor.lastrowid
         conexao.executemany(
@@ -112,12 +124,14 @@ def salvar_orcamento(conexao, cliente, servicos, percentual_desconto, *,
     return identificador
 
 
-def listar_orcamentos(conexao, status=None, cliente=None):
+def listar_orcamentos(conexao, status=None, cliente=None, cliente_id=None):
     """Filtra por status e parte literal do nome, mantendo contagem e ordem."""
     if status is not None and status not in ("pendente", "aprovado", "recusado"):
         raise ValueError("O status deve ser pendente, aprovado ou recusado.")
     if cliente is not None and not isinstance(cliente, str):
         raise ValueError("O filtro de cliente deve ser um texto.")
+    if cliente_id is not None:
+        validar_identificador(cliente_id)
     termo = cliente.strip() if cliente is not None else ""
     # ! é o escape do LIKE: %, _ e ! digitados são tratados literalmente.
     termo = termo.replace("!", "!!").replace("%", "!%").replace("_", "!_")
@@ -126,6 +140,7 @@ def listar_orcamentos(conexao, status=None, cliente=None):
         SELECT
             o.id,
             o.cliente,
+            o.cliente_id,
             o.criado_em,
             o.status,
             COUNT(i.id) AS quantidade_servicos
@@ -134,9 +149,10 @@ def listar_orcamentos(conexao, status=None, cliente=None):
             ON i.orcamento_id = o.id
         WHERE (? IS NULL OR o.status = ?)
           AND (? IS NULL OR o.cliente LIKE ? ESCAPE '!')
-        GROUP BY o.id, o.cliente, o.criado_em, o.status
+          AND (? IS NULL OR o.cliente_id = ?)
+        GROUP BY o.id, o.cliente, o.cliente_id, o.criado_em, o.status
         ORDER BY o.id DESC
-    """, (status, status, padrao, padrao)).fetchall()
+    """, (status, status, padrao, padrao, cliente_id, cliente_id)).fetchall()
 
     return [dict(registro) for registro in registros]
 
@@ -165,7 +181,7 @@ def buscar_orcamento(conexao, identificador):
     """Retorna os detalhes recalculados, ou None se o identificador não existir."""
     validar_identificador(identificador)
     registro = conexao.execute(
-        """SELECT id, cliente, percentual_desconto, criado_em, status,
+        """SELECT id, cliente, cliente_id, percentual_desconto, criado_em, status,
                   validade, condicoes_pagamento, observacoes
            FROM orcamentos WHERE id = ?""",
         (identificador,),
@@ -179,7 +195,7 @@ def buscar_orcamento(conexao, identificador):
     ]
     orcamento = calcular_orcamento(servicos, Decimal(registro["percentual_desconto"]))
     return {
-        "id": registro["id"], "cliente": registro["cliente"],
+        "id": registro["id"], "cliente": registro["cliente"], "cliente_id": registro["cliente_id"],
         "criado_em": registro["criado_em"], "status": registro["status"],
         "validade": registro["validade"],
         "condicoes_pagamento": registro["condicoes_pagamento"],
@@ -196,6 +212,7 @@ def duplicar_orcamento(conexao, identificador):
         conexao, original["cliente"], original["servicos"],
         original["percentual_desconto"], validade=original["validade"],
         condicoes_pagamento=original["condicoes_pagamento"], observacoes=original["observacoes"],
+        cliente_id=original["cliente_id"],
     )
 
 
@@ -211,8 +228,10 @@ def editar_orcamento(conexao, identificador, cliente, percentual_desconto):
         # Reutiliza as regras atuais antes de gravar qualquer alteração.
         calcular_orcamento(original["servicos"], percentual_desconto)
         cursor = conexao.execute(
-            "UPDATE orcamentos SET cliente = ?, percentual_desconto = ? WHERE id = ?",
-            (cliente.strip(), str(percentual_desconto), identificador),
+            "UPDATE orcamentos SET cliente = ?, percentual_desconto = ?, cliente_id = ? WHERE id = ?",
+            (cliente.strip(), str(percentual_desconto),
+             original["cliente_id"] if cliente.strip() == original["cliente"] else None,
+             identificador),
         )
     return cursor.rowcount == 1
 
@@ -334,5 +353,69 @@ def editar_condicoes(conexao, identificador, validade=None, condicoes_pagamento=
             """UPDATE orcamentos SET validade = ?, condicoes_pagamento = ?, observacoes = ?
                WHERE id = ?""",
             (validade, condicoes_pagamento, observacoes, identificador),
+        )
+    return cursor.rowcount == 1
+
+
+def cadastrar_cliente(conexao, nome, contato=""):
+    """Cadastra uma pessoa/empresa; nomes iguais recebem IDs independentes."""
+    nome = validar_texto(nome, "Nome do cliente", obrigatorio=True)
+    contato = validar_texto(contato, "Contato")
+    criado_em = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with conexao:
+        cursor = conexao.execute(
+            "INSERT INTO clientes (nome, contato, criado_em) VALUES (?, ?, ?)",
+            (nome, contato, criado_em),
+        )
+    return cursor.lastrowid
+
+
+def listar_clientes(conexao, nome=None):
+    """Lista todos ou busca por parte literal do nome, do ID mais recente ao antigo."""
+    if nome is not None and not isinstance(nome, str):
+        raise ValueError("O filtro de nome deve ser um texto.")
+    termo = nome.strip() if nome is not None else ""
+    termo = termo.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    padrao = f"%{termo}%" if termo else None
+    registros = conexao.execute(
+        """SELECT id, nome, contato, criado_em FROM clientes
+           WHERE (? IS NULL OR nome LIKE ? ESCAPE '!') ORDER BY id DESC""",
+        (padrao, padrao),
+    ).fetchall()
+    return [dict(registro) for registro in registros]
+
+
+def buscar_cliente(conexao, identificador):
+    """Busca pelo ID, sem presumir identidade a partir do nome."""
+    validar_identificador(identificador)
+    registro = conexao.execute(
+        "SELECT id, nome, contato, criado_em FROM clientes WHERE id = ?", (identificador,)
+    ).fetchone()
+    return dict(registro) if registro is not None else None
+
+
+def editar_cliente(conexao, identificador, nome, contato=""):
+    """Edita somente o cadastro, preservando o nome histórico das propostas."""
+    validar_identificador(identificador)
+    nome = validar_texto(nome, "Nome do cliente", obrigatorio=True)
+    contato = validar_texto(contato, "Contato")
+    with conexao:
+        cursor = conexao.execute(
+            "UPDATE clientes SET nome = ?, contato = ? WHERE id = ?",
+            (nome, contato, identificador),
+        )
+    return cursor.rowcount == 1
+
+
+def vincular_cliente(conexao, orcamento_id, cliente_id):
+    """Associa a proposta sem alterar seu nome histórico; False se não encontrada."""
+    validar_identificador(orcamento_id)
+    validar_identificador(cliente_id)
+    with conexao:
+        if buscar_cliente(conexao, cliente_id) is None:
+            raise ValueError("Cliente cadastrado não encontrado.")
+        cursor = conexao.execute(
+            "UPDATE orcamentos SET cliente_id = ? WHERE id = ?",
+            (cliente_id, orcamento_id),
         )
     return cursor.rowcount == 1
