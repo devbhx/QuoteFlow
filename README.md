@@ -3,7 +3,7 @@
 MVP local de criação e gerenciamento de orçamentos para prestadores de serviços e pequenos negócios, desenvolvido em Python para estudo e portfólio.
 
 > **Status:** MVP de terminal com persistência SQLite e gestão básica de orçamentos.
-> **Validação atual:** 361 testes automatizados aprovados no ambiente de referência.
+> **Validação atual:** 396 testes automatizados aprovados no ambiente de referência.
 
 ## Sobre o projeto
 
@@ -32,6 +32,7 @@ introduzir funcionalidades proprietárias, integrações e infraestrutura comerc
 - Configuração local do nome e contato do prestador.
 - Validade, condições de pagamento e observações opcionais por orçamento.
 - Exportação local em PDF A4, com tabelas, múltiplas páginas e fontes com acentos.
+- Backup e restauração do banco, com validação, confirmação e cópia de segurança prévia.
 - Testes de cálculos, formatação, validações, persistência, migração, terminal e PDFs.
 
 ## Escopo e limitações
@@ -107,6 +108,9 @@ novos totais antes de gravar.
 - `terminal_orcamentos.py`: criação, listagem, consulta e edição de propostas e serviços.
 - `terminal_clientes.py`: cadastro, busca, histórico, edição e associação de clientes.
 - `terminal_pdf.py`: configuração do prestador e comando de exportação.
+- `terminal_backup.py`: comandos de backup e restauração, confirmação e mensagens de erro.
+- `restauracao.py`: validação de backups e substituição protegida do banco.
+- `backup.py`: cópia consistente e validação de integridade do banco SQLite.
 - `repositorio.py`: criação das tabelas, gravação e consultas SQLite.
 - `orcamento.py`: validações e composição do orçamento.
 - `calculos.py`: operações monetárias.
@@ -156,6 +160,8 @@ Ao executar `python main.py`, o menu oferece:
 15. Histórico de orçamentos: consulta por ID do cliente cadastrado.
 16. Editar cadastro do cliente: nome e contato, preservando o ID e os dados das propostas.
 17. Vincular proposta a cliente cadastrado: associação explícita com confirmação.
+18. Criar backup do banco: informa o caminho da cópia validada.
+19. Restaurar backup: valida o arquivo, exige confirmação e protege o estado atual antes da troca.
 0. Sair.
 
 O arquivo `quoteflow.db` é criado automaticamente ao lado de `main.py`,
@@ -382,6 +388,65 @@ somente dados fictícios e conferem texto extraído, valores e paginação.
 
 Documentação da biblioteca: [ReportLab — tabelas e paginação](https://docs.reportlab.com/reportlab/userguide/ch7_tables/).
 
+## Backup local
+
+A opção 18 cria uma cópia do banco aberto em `backups/`, ao lado de `main.py`,
+e mostra seu caminho absoluto. Usa a API `Connection.backup()` do SQLite, incluindo
+dados confirmados ainda presentes no WAL, sem copiar manualmente o arquivo aberto.
+Clientes, vínculos, orçamentos, serviços e configuração do prestador são incluídos.
+Arquivos PDF de `exports/` não fazem parte do banco e não são incluídos.
+
+O backup é montado em um arquivo temporário na pasta de destino e verificado com
+`PRAGMA integrity_check` e `PRAGMA foreign_key_check`. Somente depois é publicado
+como `quoteflow_AAAAMMDD_HHMMSS.db`. Nomes repetidos recebem um sufixo numérico;
+cópias anteriores nunca são sobrescritas. Uma falha remove somente o temporário
+da tentativa, preservando o banco original e backups existentes.
+
+A operação não confirma nem desfaz transações pendentes: nesse caso, informa o
+problema e não cria uma cópia. No menu, as operações anteriores já são confirmadas
+antes do retorno. A API não altera os registros da origem.
+
+A pasta é ignorada pelo Git e contém dados locais potencialmente reais. Uma cópia no mesmo disco
+não protege contra perda física desse disco; mantenha uma cópia em outro local
+quando precisar dessa proteção.
+
+Referência: [Python — API de backup SQLite](https://docs.python.org/3/library/sqlite3.html#sqlite3.Connection.backup).
+
+## Restauração de backup
+
+A opção 19 recebe o caminho de um arquivo de backup. Primeiro o abre em modo
+somente leitura e valida uma cópia em memória: integridade SQLite, tabelas e
+colunas esperadas, chaves estrangeiras, vínculos, cálculos e formatos dos dados.
+Arquivos inválidos, o próprio banco em uso (inclusive aliases), views/gatilhos
+adicionais e esquemas incompatíveis são recusados antes de qualquer substituição.
+Nesta primeira versão, somente o esquema atual é aceito; backups de versões
+anteriores que não possuam todas as tabelas e colunas precisam de tratamento
+separado e não são migrados automaticamente por esta opção.
+
+O terminal mostra o caminho validado e a quantidade de clientes, orçamentos e
+serviços. Digite exatamente `RESTAURAR` para confirmar; Enter ou qualquer outro
+texto cancela sem criar cópia de segurança nem alterar dados.
+
+Após a confirmação, o programa cria obrigatoriamente um backup do estado atual
+em `backups/`. Se essa etapa falhar, a restauração não começa. Depois usa a API
+SQLite para substituir os dados pela cópia validada em memória, mantendo a
+conexão do menu utilizável. Ao concluir, informa o caminho do backup do estado
+anterior. Se a gravação falhar, informa o erro e o caminho dessa cópia. Esperas por
+bloqueios externos na cópia da restauração têm limite para não deixar o comando
+preso indefinidamente.
+
+A substituição inclui todo o banco (clientes, propostas, itens e prestador),
+sem mesclar registros. Ela não altera o arquivo de backup selecionado nem os PDFs
+já exportados. Validades legadas anteriores à emissão são preservadas. Transações
+pendentes impedem a restauração, sem confirmação ou rollback automático.
+
+A API SQLite de cópia efetua a troca como uma transação; o programa não apaga nem
+substitui o arquivo do banco manualmente. Use o comando no fluxo local, sem outros
+processos gravando no mesmo banco. A validação confirma compatibilidade e
+integridade, não a procedência do arquivo: escolha uma cópia de sua confiança.
+
+Referência: [SQLite — Online Backup API](https://www.sqlite.org/backup.html).
+
 ## Segurança e publicação
 
 - Não versionar bancos reais, dumps, credenciais, chaves, arquivos `.env` ou documentos com dados de clientes.
@@ -398,7 +463,7 @@ A publicação do MVP e a separação da versão comercial são revisadas antes 
 
 ## Próximas etapas
 
-- Avaliar o fluxo completo de clientes e propostas antes de priorizar novos recursos.
+- Validar o fluxo de backup e restauração com dados fictícios antes de depender dele no uso diário.
 - Avaliar melhorias do PDF conforme necessidades de uso.
 - Especificar os próximos recursos antes da implementação.
 - Planejar a separação público/privado antes da fase comercial e da evolução para web.

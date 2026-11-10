@@ -18,6 +18,7 @@ from terminal_clientes import (
     historico_cliente_no_terminal, editar_cliente_no_terminal, vincular_cliente_no_terminal,
 )
 from terminal_pdf import configurar_prestador_no_terminal, exportar_pdf_no_terminal
+from terminal_backup import criar_backup_no_terminal, restaurar_backup_no_terminal
 
 
 def main(caminho_banco=CAMINHO_BANCO):
@@ -47,6 +48,8 @@ def main(caminho_banco=CAMINHO_BANCO):
             print("15 - Histórico de orçamentos do cliente")
             print("16 - Editar cadastro do cliente")
             print("17 - Vincular orçamento a cliente cadastrado")
+            print("18 - Criar backup do banco")
+            print("19 - Restaurar backup do banco")
             print("0 - Sair")
             opcao = input("Escolha uma opção: ").strip()
             try:
@@ -84,10 +87,14 @@ def main(caminho_banco=CAMINHO_BANCO):
                     editar_cliente_no_terminal(conexao)
                 elif opcao == "17":
                     vincular_cliente_no_terminal(conexao)
+                elif opcao == "18":
+                    criar_backup_no_terminal(conexao)
+                elif opcao == "19":
+                    restaurar_backup_no_terminal(conexao)
                 elif opcao == "0":
                     break
                 else:
-                    print("Erro: escolha uma opção entre 0 e 17.")
+                    print("Erro: escolha uma opção entre 0 e 19.")
             except sqlite3.Error:
                 print("Erro ao acessar o banco. A operação não foi concluída. "
                       "Se estava criando um orçamento, ele não foi salvo.")
