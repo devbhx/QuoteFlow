@@ -1,3 +1,4 @@
+"""Exercício de estudo independente; execute main.py para usar o QuoteFlow."""
 
 from decimal import Decimal, InvalidOperation
 from calculos import calcular_subtotal

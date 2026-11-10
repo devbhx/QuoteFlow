@@ -10,7 +10,7 @@ def arredondar_moeda(valor):
 
 
 def calcular_subtotal(valor_unitario, quantidade):
-    subtotal = valor_unitario * quantidade
+    subtotal = arredondar_moeda(valor_unitario) * quantidade
     return arredondar_moeda(subtotal)
 
 

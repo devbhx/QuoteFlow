@@ -21,3 +21,7 @@ def test_formatar_valor_grande():
 def test_formatar_valor_zero():
     resultado = formatar_moeda(Decimal("0"))
     assert resultado == "R$ 0,00"
+
+
+def test_formatacao_usa_arredondamento_comercial():
+    assert formatar_moeda(Decimal("1.005")) == "R$ 1,01"

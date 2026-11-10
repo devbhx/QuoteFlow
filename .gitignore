@@ -1,17 +1,79 @@
-# Ambiente virtual
+# Ambientes virtuais
 .venv/
+venv/
+env/
+ENV/
 
-# Cache do Python
+# Bytecode, caches e relatórios locais de testes
 __pycache__/
-*.pyc
-
-# Cache do pytest
+*.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
-# Arquivos do macOS
-.DS_Store
+# Artefatos de empacotamento
+build/
+dist/
+*.egg-info/
 
-# Variáveis de ambiente e segredos
+# Bancos locais SQLite e arquivos auxiliares (em qualquer pasta)
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db3
+*.db3-*
+*.sdb
+*.sdb-*
+
+# Variáveis de ambiente: exemplos só devem conter valores fictícios
 .env
 .env.*
+.envrc
 !.env.example
+
+# Credenciais e chaves locais
+.aws/
+.ssh/
+.codex/auth.json
+credentials
+credentials.*
+secrets/
+secrets.*
+service-account*.json
+service_account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Exportações locais, dumps, cópias e arquivos temporários
+exports/
+exportacoes/
+backups/
+*.sql
+*.dump
+*.bak
+*.backup
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*~
+
+# Arquivos do sistema operacional
+.DS_Store
+._*
+Thumbs.db

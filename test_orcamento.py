@@ -93,3 +93,60 @@ def test_recalcular_subtotal_adulterado():
 
     assert resultado["subtotal_geral"] == Decimal("160.00")
     assert resultado["total"] == Decimal("160.00")
+
+@pytest.mark.parametrize("quantidade", [0, True, 1.5, 1_000_001])
+def test_quantidade_invalida(quantidade):
+    with pytest.raises(ValueError):
+        criar_item("Serviço", quantidade, Decimal("10"))
+
+
+@pytest.mark.parametrize("valor", ["NaN", "sNaN", "Infinity", "0", "0.001", "1e30"])
+def test_valor_unitario_invalido(valor):
+    with pytest.raises(ValueError):
+        criar_item("Serviço", 1, Decimal(valor))
+
+
+def test_preco_normalizado_antes_do_subtotal():
+    item = criar_item("Serviço", 3, Decimal("1.005"))
+    assert item["valor_unitario"] == Decimal("1.01")
+    assert item["subtotal"] == Decimal("3.03")
+
+
+def test_limite_monetario_aceito():
+    from orcamento import VALOR_MAXIMO
+    resultado = calcular_orcamento(
+        [criar_item("Serviço", 1, VALOR_MAXIMO)], Decimal("0")
+    )
+    assert resultado["total"] == VALOR_MAXIMO
+
+
+def test_subtotal_acima_do_limite():
+    from orcamento import VALOR_MAXIMO
+    with pytest.raises(ValueError, match="subtotal"):
+        criar_item("Serviço", 2, VALOR_MAXIMO)
+
+
+def test_soma_acima_do_limite():
+    servicos = [criar_item("Serviço", 1, Decimal("600000000000"))] * 2
+    with pytest.raises(ValueError, match="subtotal geral"):
+        calcular_orcamento(servicos, Decimal("0"))
+
+
+@pytest.mark.parametrize("percentual", ["NaN", "sNaN", "Infinity", "-1"])
+def test_percentual_invalido(percentual):
+    with pytest.raises(ValueError):
+        calcular_orcamento([criar_item("Serviço", 1, Decimal("10"))], Decimal(percentual))
+
+
+def test_desconto_integral():
+    resultado = calcular_orcamento(
+        [criar_item("Serviço", 1, Decimal("10"))], Decimal("100")
+    )
+    assert resultado["valor_desconto"] == Decimal("10.00")
+    assert resultado["total"] == Decimal("0.00")
+
+
+@pytest.mark.parametrize("servico", [{"nome": "Serviço"}, "inválido"])
+def test_estrutura_de_servico_invalida(servico):
+    with pytest.raises(ValueError):
+        calcular_orcamento([servico], Decimal("0"))
