@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from orcamento import calcular_orcamento, criar_item
+from dados_comerciais import validar_texto, validar_condicoes
 
 
 CAMINHO_BANCO = Path(__file__).resolve().parent / "quoteflow.db"
@@ -24,7 +25,15 @@ def abrir_banco(caminho=CAMINHO_BANCO):
                 percentual_desconto TEXT NOT NULL,
                 criado_em TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pendente'
-                    CHECK (status IN ('pendente', 'aprovado', 'recusado'))
+                    CHECK (status IN ('pendente', 'aprovado', 'recusado')),
+                validade TEXT,
+                condicoes_pagamento TEXT NOT NULL DEFAULT '',
+                observacoes TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS configuracao_prestador (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                nome TEXT NOT NULL CHECK (length(trim(nome)) > 0),
+                contato TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS itens_orcamento (
                 id INTEGER PRIMARY KEY,
@@ -45,7 +54,7 @@ def abrir_banco(caminho=CAMINHO_BANCO):
 
 
 def atualizar_estrutura(conexao):
-    """Adiciona status a bancos antigos, sem recriar tabelas ou apagar dados."""
+    """Adiciona colunas ausentes sem recriar tabelas ou apagar dados."""
     with conexao:
         colunas = conexao.execute("PRAGMA table_info(orcamentos)").fetchall()
         if "status" not in [coluna["name"] for coluna in colunas]:
@@ -55,19 +64,39 @@ def atualizar_estrutura(conexao):
                     CHECK (status IN ('pendente', 'aprovado', 'recusado'))
             """)
 
+        nomes = {coluna["name"] for coluna in colunas}
+        # Definições fixas do programa, nunca fornecidas pelo usuário.
+        novas_colunas = {
+            "validade": "validade TEXT",
+            "condicoes_pagamento": "condicoes_pagamento TEXT NOT NULL DEFAULT ''",
+            "observacoes": "observacoes TEXT NOT NULL DEFAULT ''",
+        }
+        for nome, definicao in novas_colunas.items():
+            if nome not in nomes:
+                conexao.execute(f"ALTER TABLE orcamentos ADD COLUMN {definicao}")
 
-def salvar_orcamento(conexao, cliente, servicos, percentual_desconto):
+
+def salvar_orcamento(conexao, cliente, servicos, percentual_desconto, *,
+                     validade=None, condicoes_pagamento="", observacoes=""):
     """Salva cabeçalho e itens juntos: qualquer falha desfaz toda a gravação."""
     if not isinstance(cliente, str) or not cliente.strip():
         raise ValueError("O nome do cliente não pode ficar vazio.")
     orcamento = calcular_orcamento(servicos, percentual_desconto)
-    criado_em = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    emissao = datetime.now(timezone.utc)
+    validade, condicoes_pagamento, observacoes = validar_condicoes(
+        validade, condicoes_pagamento, observacoes,
+        data_emissao=emissao.astimezone().date(),
+    )
+    criado_em = emissao.isoformat(timespec="seconds")
 
     # Os parâmetros (?) mantêm os dados separados dos comandos SQL.
     with conexao:
         cursor = conexao.execute(
-            "INSERT INTO orcamentos (cliente, percentual_desconto, criado_em) VALUES (?, ?, ?)",
-            (cliente.strip(), str(percentual_desconto), criado_em),
+            """INSERT INTO orcamentos
+               (cliente, percentual_desconto, criado_em, validade, condicoes_pagamento, observacoes)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (cliente.strip(), str(percentual_desconto), criado_em,
+             validade, condicoes_pagamento, observacoes),
         )
         identificador = cursor.lastrowid
         conexao.executemany(
@@ -136,7 +165,9 @@ def buscar_orcamento(conexao, identificador):
     """Retorna os detalhes recalculados, ou None se o identificador não existir."""
     validar_identificador(identificador)
     registro = conexao.execute(
-        "SELECT id, cliente, percentual_desconto, criado_em, status FROM orcamentos WHERE id = ?",
+        """SELECT id, cliente, percentual_desconto, criado_em, status,
+                  validade, condicoes_pagamento, observacoes
+           FROM orcamentos WHERE id = ?""",
         (identificador,),
     ).fetchone()
     if registro is None:
@@ -149,7 +180,10 @@ def buscar_orcamento(conexao, identificador):
     orcamento = calcular_orcamento(servicos, Decimal(registro["percentual_desconto"]))
     return {
         "id": registro["id"], "cliente": registro["cliente"],
-        "criado_em": registro["criado_em"], "status": registro["status"], **orcamento,
+        "criado_em": registro["criado_em"], "status": registro["status"],
+        "validade": registro["validade"],
+        "condicoes_pagamento": registro["condicoes_pagamento"],
+        "observacoes": registro["observacoes"], **orcamento,
     }
 
 
@@ -160,7 +194,8 @@ def duplicar_orcamento(conexao, identificador):
         return None
     return salvar_orcamento(
         conexao, original["cliente"], original["servicos"],
-        original["percentual_desconto"],
+        original["percentual_desconto"], validade=original["validade"],
+        condicoes_pagamento=original["condicoes_pagamento"], observacoes=original["observacoes"],
     )
 
 
@@ -257,5 +292,47 @@ def remover_item(conexao, orcamento_id, item_id):
         cursor = conexao.execute(
             "DELETE FROM itens_orcamento WHERE id = ? AND orcamento_id = ?",
             (item_id, orcamento_id),
+        )
+    return cursor.rowcount == 1
+
+
+def buscar_prestador(conexao):
+    """Retorna a configuração local, ou None antes do primeiro cadastro."""
+    registro = conexao.execute(
+        "SELECT nome, contato FROM configuracao_prestador WHERE id = 1"
+    ).fetchone()
+    return dict(registro) if registro is not None else None
+
+
+def salvar_prestador(conexao, nome, contato=""):
+    nome = validar_texto(nome, "Nome do prestador", obrigatorio=True)
+    contato = validar_texto(contato, "Contato")
+    with conexao:
+        conexao.execute(
+            """INSERT INTO configuracao_prestador (id, nome, contato) VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET nome = excluded.nome, contato = excluded.contato""",
+            (nome, contato),
+        )
+
+
+def editar_condicoes(conexao, identificador, validade=None, condicoes_pagamento="", observacoes=""):
+    """Atualiza os campos comerciais juntos; False indica orçamento inexistente."""
+    validar_identificador(identificador)
+    with conexao:
+        registro = conexao.execute(
+            "SELECT criado_em, validade FROM orcamentos WHERE id = ?", (identificador,)
+        ).fetchone()
+        if registro is None:
+            return False
+        # Datas legadas são preservadas quando somente outros campos são editados.
+        emissao = (datetime.fromisoformat(registro["criado_em"]).astimezone().date()
+                   if validade != registro["validade"] else None)
+        validade, condicoes_pagamento, observacoes = validar_condicoes(
+            validade, condicoes_pagamento, observacoes, data_emissao=emissao
+        )
+        cursor = conexao.execute(
+            """UPDATE orcamentos SET validade = ?, condicoes_pagamento = ?, observacoes = ?
+               WHERE id = ?""",
+            (validade, condicoes_pagamento, observacoes, identificador),
         )
     return cursor.rowcount == 1

@@ -1,0 +1,2 @@
+# Geração local de PDFs com tabelas e paginação automática.
+reportlab==5.1.0

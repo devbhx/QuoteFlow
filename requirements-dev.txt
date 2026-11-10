@@ -1,2 +1,4 @@
-# pytest é usado somente para executar os testes automatizados.
+-r requirements.txt
+# pytest executa a suíte; pypdf confere conteúdo e páginas dos PDFs gerados.
 pytest==9.2.0
+pypdf==6.21.4

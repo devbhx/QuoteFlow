@@ -483,3 +483,83 @@ def test_menu_falha_inclusao_remocao(monkeypatch, capsys, tmp_path, opcao, funca
     assert "Erro ao acessar o banco" in saida
     assert "adicionado ao orçamento" not in saida
     assert "removido do orçamento" not in saida
+
+
+def test_menu_prestador_condicoes_e_consulta(monkeypatch, capsys, tmp_path):
+    caminho = tmp_path / "teste.db"
+    fornecer_entradas(monkeypatch, [
+        "10", "Empresa exemplo", "contato@example.com",
+        "1", "Cliente fictício", "Serviço", "10", "2", "n", "10",
+        "11", "1", "31/12/2026", "Pix", "Instalação agendada", "0",
+    ])
+    main.main(caminho)
+    saida = capsys.readouterr().out
+    assert "Dados do prestador salvos." in saida
+    assert "Dados comerciais do orçamento #1 salvos." in saida
+    fornecer_entradas(monkeypatch, ["10", "", "", "3", "1", "0"])
+    main.main(caminho)
+    saida = capsys.readouterr().out
+    assert "Prestador atual: Empresa exemplo" in saida
+    assert "Contato atual: contato@example.com" in saida
+    assert "Validade: 31/12/2026" in saida
+    assert "Condições de pagamento: Pix" in saida
+    assert "Observações: Instalação agendada" in saida
+    assert "TOTAL FINAL: R$ 18,00" in saida
+
+
+def test_menu_campos_comerciais_manter_limpar_e_data_invalida(monkeypatch, capsys, tmp_path):
+    from repositorio import abrir_banco, buscar_orcamento, buscar_prestador
+
+    caminho = tmp_path / "teste.db"
+    fornecer_entradas(monkeypatch, [
+        "10", "", "", "10", "Empresa exemplo", "contato@example.com",
+        "10", "", "-", "1", "Cliente fictício", "Serviço", "10", "1", "n", "0",
+        "11", "1", "31/12/2026", "Pix", "Observação",
+        "11", "1", "31/02/2026", "Boleto", "Não gravar",
+        "11", "1", "", "", "",
+        "11", "1", "-", "-", "-", "0",
+    ])
+    main.main(caminho)
+    saida = capsys.readouterr().out
+    assert "Nome do prestador não pode ficar vazio" in saida
+    assert "informe uma data válida" in saida
+    assert "Pagamento atual: Pix" in saida
+    banco = abrir_banco(caminho)
+    try:
+        assert buscar_prestador(banco) == {"nome": "Empresa exemplo", "contato": ""}
+        resultado = buscar_orcamento(banco, 1)
+        assert resultado["validade"] is None
+        assert resultado["condicoes_pagamento"] == resultado["observacoes"] == ""
+    finally:
+        banco.close()
+
+
+@pytest.mark.parametrize("identificador", ["abc", "0", "999"])
+def test_menu_condicoes_identificador_invalido(monkeypatch, capsys, tmp_path, identificador):
+    fornecer_entradas(monkeypatch, ["11", identificador, "0"])
+    main.main(tmp_path / "teste.db")
+    saida = capsys.readouterr().out
+    assert ("Orçamento não encontrado" if identificador == "999" else
+            "identificador inteiro positivo válido") in saida
+
+
+def test_menu_rejeita_validade_anterior_e_preserva_dados(monkeypatch, capsys, tmp_path):
+    from repositorio import abrir_banco, buscar_orcamento
+
+    caminho = tmp_path / "teste.db"
+    fornecer_entradas(monkeypatch, [
+        "1", "Cliente fictício", "Serviço", "10", "1", "n", "0",
+        "11", "1", "01/01/2000", "Não salvar", "Não salvar", "0",
+    ])
+    main.main(caminho)
+    saida = capsys.readouterr().out
+    assert "A validade não pode ser anterior à data de emissão" in saida
+    assert "Nenhuma alteração foi salva." in saida
+    assert "Dados comerciais do orçamento #1 salvos." not in saida
+    banco = abrir_banco(caminho)
+    try:
+        resultado = buscar_orcamento(banco, 1)
+        assert resultado["validade"] is None
+        assert resultado["condicoes_pagamento"] == resultado["observacoes"] == ""
+    finally:
+        banco.close()

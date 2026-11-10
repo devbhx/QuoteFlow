@@ -3,7 +3,7 @@
 MVP local de criação e gerenciamento de orçamentos para prestadores de serviços e pequenos negócios, desenvolvido em Python para estudo e portfólio.
 
 > **Status:** MVP de terminal com persistência SQLite e gestão básica de orçamentos.
-> **Validação atual:** 246 testes automatizados aprovados no ambiente de referência.
+> **Validação atual:** 294 testes automatizados aprovados no ambiente de referência.
 
 ## Sobre o projeto
 
@@ -27,14 +27,17 @@ introduzir funcionalidades proprietárias, integrações e infraestrutura comerc
 - Edição de cliente, desconto, nome do serviço, quantidade e preço.
 - Inclusão e remoção de itens; confirmação de remoção e proteção do último item.
 - Validações numéricas e gravações em transações.
-- Atualização automática de bancos anteriores à coluna `status`.
-- Testes de cálculos, formatação, validações, persistência, migração e terminal.
+- Atualização automática de bancos antigos para status e campos comerciais.
+- Configuração local do nome e contato do prestador.
+- Validade, condições de pagamento e observações opcionais por orçamento.
+- Exportação local em PDF A4, com tabelas, múltiplas páginas e fontes com acentos.
+- Testes de cálculos, formatação, validações, persistência, migração, terminal e PDFs.
 
 ## Escopo e limitações
 
 A aplicação funciona localmente, com um banco por instalação. Não há autenticação,
 autorização por usuário, isolamento por empresa, acesso externo do cliente,
-aprovação por link, PDF, interface web, assinaturas ou pagamentos.
+aprovação por link, interface web, assinaturas ou pagamentos.
 O nome do cliente fica em cada orçamento; não há cadastro independente de clientes
 nem histórico de alterações. As operações administrativas estão disponíveis para
 quem tem acesso ao programa local. O MVP não está preparado para exposição como
@@ -45,13 +48,17 @@ serviço web ou uso simultâneo por múltiplas empresas.
 - Python
 - SQLite (módulo `sqlite3` da biblioteca padrão)
 - Biblioteca Decimal
-- Pytest
+- ReportLab para geração de PDF
+- Pytest e pypdf para testes
 - Git e GitHub
 
 ## Como executar
 
 Ambiente de referência validado: Python 3.15 e pytest 9.2.0.
-O programa utiliza apenas a biblioteca padrão; pytest é uma dependência de desenvolvimento para executar os testes.
+O programa utiliza ReportLab 5.1.0 para exportar PDFs, além da biblioteca padrão.
+Pytest 9.2.0 e pypdf 6.21.4 são usados somente no desenvolvimento para executar
+testes e validar os documentos. As fontes Vera são fornecidas pelo ReportLab;
+não é necessário instalar fontes do sistema para os caracteres portugueses.
 
 Na pasta do projeto (macOS/Linux):
 
@@ -61,6 +68,10 @@ source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python main.py
 ```
+
+Para instalar somente as dependências de execução, use
+`python -m pip install -r requirements.txt`. O arquivo `requirements-dev.txt`
+já inclui essas dependências.
 
 ## Como executar os testes
 
@@ -95,6 +106,9 @@ novos totais antes de gravar.
 - `orcamento.py`: validações e composição do orçamento.
 - `calculos.py`: operações monetárias.
 - `formatacao.py`: apresentação em reais.
+- `dados_comerciais.py`: validação de textos comerciais e validade.
+- `exportacao_pdf.py`: montagem do documento e gravação sem sobrescrever arquivos.
+- `requirements.txt`: dependência de execução para exportação.
 - `test_*.py`: testes automatizados com bancos temporários.
 - `requirements-dev.txt`: dependência de desenvolvimento para executar os testes.
 - `treino_funcoes.py`: exercício independente de estudo, não é o fluxo oficial da aplicação.
@@ -117,6 +131,9 @@ Ao executar `python main.py`, o menu oferece:
 7. Editar serviço: recebe o orçamento, mostra os IDs dos itens e permite editar um deles.
 8. Adicionar serviço: inclui um novo item em um orçamento salvo.
 9. Remover serviço: seleciona pelo ID e solicita confirmação; mantém ao menos um item.
+10. Configurar prestador: nome obrigatório e contato opcional.
+11. Editar validade, pagamento e observações de um orçamento salvo.
+12. Exportar orçamento em PDF: requer o nome do prestador configurado na opção 10.
 0. Sair.
 
 O arquivo `quoteflow.db` é criado automaticamente ao lado de `main.py`,
@@ -128,7 +145,8 @@ Os testes usam bancos temporários, sem acessar os dados reais.
 
 | Tabela | Campos principais | Responsabilidade |
 |---|---|---|
-| `orcamentos` | `id`, `cliente`, `percentual_desconto`, `criado_em`, `status` | Identificação e dados gerais |
+| `orcamentos` | `id`, `cliente`, `percentual_desconto`, `criado_em`, `status`, `validade`, `condicoes_pagamento`, `observacoes` | Identificação e dados gerais |
+| `configuracao_prestador` | `id` fixo em 1, `nome`, `contato` | Configuração local reutilizável |
 | `itens_orcamento` | `id`, `orcamento_id`, `nome`, `quantidade`, `valor_unitario_centavos` | Serviços de cada orçamento |
 
 O `id` é uma **chave primária**, que identifica um registro. O `orcamento_id`
@@ -229,25 +247,64 @@ As duas operações preservam número, cliente, desconto, data, status e demais 
 A consulta recalcula os totais; a listagem reflete a nova quantidade de serviços.
 Ambas são permitidas em qualquer status, conforme a regra atual de edição livre.
 
-## Preparação para PDF — decisões pendentes
+## Dados comerciais para o futuro PDF
 
-A edição básica de orçamentos está concluída. A geração de PDF será uma etapa
-separada; nenhuma biblioteca de PDF foi adicionada e nenhuma exportação existe.
+A opção 10 salva uma única configuração de prestador por instalação. O nome é
+obrigatório e o contato é texto livre opcional (telefone, e-mail ou outro contato).
+Enter mantém os dados existentes; `-` limpa o contato. Não é preciso configurar
+o prestador para continuar criando orçamentos nesta etapa.
 
-Antes da implementação, definir:
+A opção 11 edita dados opcionais de um orçamento salvo:
 
-- Dados do prestador: nome/razão social, contato e eventual CPF/CNPJ, endereço e logo.
-- Dados adicionais do cliente que devem constar no documento.
-- Validade da proposta, condições de pagamento e observações; quais serão opcionais.
-- Layout inicial, exibição do status e apresentação de serviços em várias páginas.
-- Pasta de saída, nome do arquivo e comportamento quando já houver um PDF com esse nome.
-- Como distinguir a data de criação da proposta da data de exportação.
+- **Validade:** data em `DD/MM/AAAA` no terminal, armazenada como `AAAA-MM-DD`.
+- **Condições de pagamento:** texto livre.
+- **Observações:** texto livre.
 
-Número, data de criação, nome do cliente, itens, quantidades, preços, subtotais,
-desconto e total já estão disponíveis no banco. Dados comerciais adicionais ainda
-não foram modelados; serão especificados antes de novas colunas ou cadastros.
-A exportação deverá consumir os dados e cálculos existentes. Sua validação deverá
-abranger acentos, textos longos, múltiplas páginas e consistência dos valores.
+Enter mantém cada campo; `-` limpa um campo opcional. Uma data inválida impede
+salvar todos os campos dessa operação. Em novos orçamentos e alterações da validade,
+a data não pode ser anterior à emissão (data de criação exibida no horário local).
+O mesmo dia é permitido; a comparação não usa a data de exportação nem exige que
+uma proposta histórica tenha validade futura. Datas antigas já gravadas não são
+corrigidas automaticamente: consulta, exportação e edição de outros campos mantendo
+a mesma validade continuam disponíveis. Não há bloqueio automático de orçamento vencido. Os dados comerciais
+aparecem na consulta quando preenchidos e não alteram os cálculos nem o status.
+A duplicação copia esses campos, mas a cópia tem uma nova emissão: se a validade
+copiada for anterior a ela, a duplicação é recusada sem criar registros ou alterar
+o original. Nesse caso, revise explicitamente a validade antes de duplicar. O cadastro do prestador é global e não guarda uma
+cópia histórica de sua identidade em cada orçamento.
+
+Bancos existentes recebem as novas colunas vazias sem perder registros; abrir
+novamente preserva os dados já preenchidos. Os testes usam somente dados fictícios.
+
+## Exportação de PDF
+
+1. Configure o nome do prestador na opção 10; o contato é opcional.
+2. Se desejar, preencha validade, pagamento e observações pela opção 11.
+3. Escolha a opção 12 e informe o número de um orçamento salvo.
+4. O terminal mostra o caminho absoluto do arquivo gerado.
+
+O documento A4 inclui prestador e contato, número e data de criação da proposta,
+cliente, validade quando preenchida, serviços, preços, subtotais, desconto,
+total e textos comerciais opcionais. O rodapé mostra a data de exportação com
+fuso local e o número da página. As tabelas repetem seu cabeçalho nas páginas
+seguintes; textos longos quebram linhas e podem continuar em outra página.
+O status é interno ao sistema e não aparece no documento comercial.
+A exportação utiliza os cálculos existentes e não modifica o orçamento no banco.
+Textos digitados são tratados literalmente, inclusive caracteres como `<` e `&`.
+
+Os arquivos são salvos em `exports/`, ao lado de `main.py`, independentemente da
+pasta de execução. O nome segue `orcamento_ID_AAAAMMDD_HHMMSS.pdf`; em caso de
+colisão, um sufixo numérico é acrescentado. Nenhum PDF existente é sobrescrito.
+O documento é montado em memória antes da gravação. A pasta está ignorada pelo
+Git; documentos com dados reais não devem ser adicionados ao repositório.
+
+Esta primeira versão não inclui logo, CPF/CNPJ, endereço, assinatura digital,
+aprovação externa ou envio automático. Usa o prestador configurado no momento
+da exportação, sem histórico dessa configuração. Uma nova exportação após editar
+os dados gera outro arquivo; PDFs anteriores permanecem iguais. Os testes usam
+somente dados fictícios e conferem texto extraído, valores e paginação.
+
+Documentação da biblioteca: [ReportLab — tabelas e paginação](https://docs.reportlab.com/reportlab/userguide/ch7_tables/).
 
 ## Segurança e publicação
 
@@ -265,8 +322,8 @@ A publicação do MVP e a separação da versão comercial são revisadas antes 
 
 ## Próximas etapas
 
-- Especificar os dados comerciais e o modelo do primeiro PDF local.
-- Implementar a exportação somente após definir o escopo e avaliar a dependência necessária.
+- Avaliar o primeiro PDF com exemplos de uso e priorizar melhorias de apresentação.
+- Especificar os próximos recursos antes da implementação.
 - Planejar a separação público/privado antes da fase comercial e da evolução para web.
 
 ## Autor

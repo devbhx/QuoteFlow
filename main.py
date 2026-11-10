@@ -9,7 +9,8 @@ from formatacao import formatar_moeda
 from repositorio import (
     CAMINHO_BANCO, abrir_banco, salvar_orcamento, listar_orcamentos, buscar_orcamento,
     alterar_status, validar_identificador, duplicar_orcamento, editar_orcamento,
-    listar_itens_orcamento, editar_item, adicionar_item, remover_item
+    listar_itens_orcamento, editar_item, adicionar_item, remover_item,
+    buscar_prestador, salvar_prestador, editar_condicoes
 )
 
 
@@ -167,6 +168,12 @@ def consultar_orcamento(conexao):
         return
     print(f"Orçamento #{orcamento['id']} — {formatar_data(orcamento['criado_em'])}")
     print("Status:", orcamento["status"])
+    if orcamento["validade"]:
+        print("Validade:", datetime.strptime(orcamento["validade"], "%Y-%m-%d").strftime("%d/%m/%Y"))
+    if orcamento["condicoes_pagamento"]:
+        print("Condições de pagamento:", orcamento["condicoes_pagamento"])
+    if orcamento["observacoes"]:
+        print("Observações:", orcamento["observacoes"])
     exibir_orcamento(orcamento["cliente"], orcamento)
 
 
@@ -365,6 +372,95 @@ def remover_item_no_terminal(conexao):
         print("Serviço não encontrado neste orçamento.")
 
 
+def configurar_prestador_no_terminal(conexao):
+    atual = buscar_prestador(conexao) or {"nome": "", "contato": ""}
+    print(f"Prestador atual: {atual['nome'] or 'não configurado'}")
+    print(f"Contato atual: {atual['contato'] or 'não informado'}")
+    nome = input("Nome do prestador (Enter para manter): ")
+    contato = input("Contato (Enter para manter, - para limpar): ")
+    nome = atual["nome"] if nome == "" else nome
+    contato = atual["contato"] if contato == "" else ("" if contato.strip() == "-" else contato)
+    try:
+        salvar_prestador(conexao, nome, contato)
+    except ValueError as erro:
+        print(f"Erro: {erro} Nenhuma alteração foi salva.")
+        return
+    print("Dados do prestador salvos.")
+
+
+def editar_condicoes_no_terminal(conexao):
+    try:
+        identificador = int(input("Número do orçamento: "))
+        validar_identificador(identificador)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    original = buscar_orcamento(conexao, identificador)
+    if original is None:
+        print("Orçamento não encontrado.")
+        return
+    validade_atual = (
+        datetime.strptime(original["validade"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        if original["validade"] else "não informada"
+    )
+    print(f"Validade atual: {validade_atual}")
+    print(f"Pagamento atual: {original['condicoes_pagamento'] or 'não informado'}")
+    print(f"Observações atuais: {original['observacoes'] or 'não informadas'}")
+    print("Enter mantém cada campo; - limpa um campo opcional.")
+    entrada = input("Validade (DD/MM/AAAA): ")
+    pagamento = input("Condições de pagamento: ")
+    observacoes = input("Observações: ")
+    try:
+        if entrada == "":
+            validade = original["validade"]
+        elif entrada.strip() == "-":
+            validade = None
+        else:
+            validade = datetime.strptime(entrada.strip(), "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        print("Erro: informe uma data válida em DD/MM/AAAA. Nenhuma alteração foi salva.")
+        return
+    pagamento = (original["condicoes_pagamento"] if pagamento == ""
+                 else "" if pagamento.strip() == "-" else pagamento)
+    observacoes = (original["observacoes"] if observacoes == ""
+                  else "" if observacoes.strip() == "-" else observacoes)
+    try:
+        encontrado = editar_condicoes(conexao, identificador, validade, pagamento, observacoes)
+    except ValueError as erro:
+        print(f"Erro: {erro} Nenhuma alteração foi salva.")
+        return
+    if encontrado:
+        print(f"Dados comerciais do orçamento #{identificador} salvos.")
+    else:
+        print("Orçamento não encontrado.")
+
+
+def exportar_pdf_no_terminal(conexao):
+    try:
+        identificador = int(input("Número do orçamento a exportar: "))
+        validar_identificador(identificador)
+    except ValueError:
+        print("Erro: informe um identificador inteiro positivo válido.")
+        return
+    try:
+        # Importação local mantém as outras opções disponíveis sem a dependência.
+        from exportacao_pdf import exportar_orcamento
+        caminho = exportar_orcamento(conexao, identificador)
+    except ModuleNotFoundError:
+        print("Erro: instale as dependências com python -m pip install -r requirements.txt.")
+        return
+    except ValueError as erro:
+        print(f"Erro: {erro}")
+        return
+    except OSError:
+        print("Erro: não foi possível gravar o PDF. Verifique a pasta de exportação.")
+        return
+    if caminho is None:
+        print("Orçamento não encontrado.")
+    else:
+        print(f"PDF exportado: {caminho}")
+
+
 def main(caminho_banco=CAMINHO_BANCO):
     try:
         conexao = abrir_banco(caminho_banco)
@@ -384,6 +480,9 @@ def main(caminho_banco=CAMINHO_BANCO):
             print("7 - Editar serviço")
             print("8 - Adicionar serviço")
             print("9 - Remover serviço")
+            print("10 - Configurar prestador")
+            print("11 - Editar validade, pagamento e observações")
+            print("12 - Exportar orçamento em PDF")
             print("0 - Sair")
             opcao = input("Escolha uma opção: ").strip()
             try:
@@ -439,10 +538,16 @@ def main(caminho_banco=CAMINHO_BANCO):
                     adicionar_item_no_terminal(conexao)
                 elif opcao == "9":
                     remover_item_no_terminal(conexao)
+                elif opcao == "10":
+                    configurar_prestador_no_terminal(conexao)
+                elif opcao == "11":
+                    editar_condicoes_no_terminal(conexao)
+                elif opcao == "12":
+                    exportar_pdf_no_terminal(conexao)
                 elif opcao == "0":
                     break
                 else:
-                    print("Erro: escolha uma opção entre 0 e 9.")
+                    print("Erro: escolha uma opção entre 0 e 12.")
             except sqlite3.Error:
                 print("Erro ao acessar o banco. A operação não foi concluída. "
                       "Se estava criando um orçamento, ele não foi salvo.")
