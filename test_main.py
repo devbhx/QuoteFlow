@@ -4,6 +4,7 @@ import importlib
 import pytest
 
 import main
+import terminal_orcamentos
 
 
 def fornecer_entradas(monkeypatch, entradas):
@@ -98,7 +99,7 @@ def test_erro_ao_salvar_nao_anuncia_sucesso(monkeypatch, capsys, tmp_path):
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, "salvar_orcamento", falhar)
+    monkeypatch.setattr(terminal_orcamentos, "salvar_orcamento", falhar)
     fornecer_entradas(monkeypatch, ["1", "Ana", "Serviço", "10", "1", "n", "0", "0"])
     main.main(tmp_path / "teste.db")
     saida = capsys.readouterr().out
@@ -160,7 +161,7 @@ def test_menu_falha_ao_alterar_status(monkeypatch, capsys, tmp_path):
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, "alterar_status", falhar)
+    monkeypatch.setattr(terminal_orcamentos, "alterar_status", falhar)
     fornecer_entradas(monkeypatch, ["4", "1", "aprovado", "0"])
     main.main(tmp_path / "teste.db")
     saida = capsys.readouterr().out
@@ -265,7 +266,7 @@ def test_menu_falha_ao_duplicar(monkeypatch, capsys, tmp_path):
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, "duplicar_orcamento", falhar)
+    monkeypatch.setattr(terminal_orcamentos, "duplicar_orcamento", falhar)
     fornecer_entradas(monkeypatch, ["5", "1", "0"])
     main.main(tmp_path / "teste.db")
     saida = capsys.readouterr().out
@@ -326,7 +327,7 @@ def test_menu_falha_ao_editar(monkeypatch, capsys, tmp_path):
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, "editar_orcamento", falhar)
+    monkeypatch.setattr(terminal_orcamentos, "editar_orcamento", falhar)
     fornecer_entradas(monkeypatch, [
         "1", "Ana", "Serviço", "10", "1", "n", "0",
         "6", "1", "Maria", "10", "0",
@@ -473,7 +474,7 @@ def test_menu_falha_inclusao_remocao(monkeypatch, capsys, tmp_path, opcao, funca
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, funcao, falhar)
+    monkeypatch.setattr(terminal_orcamentos, funcao, falhar)
     fornecer_entradas(monkeypatch, [
         "1", "Ana", "A", "10", "1", "s", "B", "20", "1", "n", "0",
         opcao, *entradas, "0",

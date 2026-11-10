@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 
 import main
+import terminal_clientes
 from orcamento import criar_item
 from repositorio import (
     abrir_banco, cadastrar_cliente, listar_clientes, salvar_orcamento, buscar_orcamento,
@@ -122,7 +123,7 @@ def test_menu_falha_de_gravacao_nao_anuncia_sucesso(monkeypatch, capsys, tmp_pat
     def falhar(*args):
         raise sqlite3.OperationalError("falha simulada")
 
-    monkeypatch.setattr(main, "cadastrar_cliente", falhar)
+    monkeypatch.setattr(terminal_clientes, "cadastrar_cliente", falhar)
     entradas = iter(["13", "Cliente fictício", "", "0"])
     monkeypatch.setattr("builtins.input", lambda _: next(entradas))
     main.main(tmp_path / "teste.db")

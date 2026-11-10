@@ -102,7 +102,11 @@ novos totais antes de gravar.
 
 ## Organização
 
-- `main.py`: interface de terminal; importar o módulo não inicia o programa.
+- `main.py`: inicialização, conexão SQLite e navegação do menu principal.
+- `terminal_comum.py`: leitura de entradas e formatação de datas compartilhadas.
+- `terminal_orcamentos.py`: criação, listagem, consulta e edição de propostas e serviços.
+- `terminal_clientes.py`: cadastro, busca, histórico, edição e associação de clientes.
+- `terminal_pdf.py`: configuração do prestador e comando de exportação.
 - `repositorio.py`: criação das tabelas, gravação e consultas SQLite.
 - `orcamento.py`: validações e composição do orçamento.
 - `calculos.py`: operações monetárias.
@@ -113,6 +117,17 @@ novos totais antes de gravar.
 - `test_*.py`: testes automatizados com bancos temporários.
 - `requirements-dev.txt`: dependência de desenvolvimento para executar os testes.
 - `treino_funcoes.py`: exercício independente de estudo, não é o fluxo oficial da aplicação.
+
+A interface foi separada por responsabilidade, mantendo as opções e os textos do
+menu. Os módulos `terminal_*` cuidam de `input()` e `print()`; `repositorio.py`
+continua concentrando SQL e os módulos de domínio continuam cuidando das regras.
+O módulo `terminal_pdf.py` aciona `exportacao_pdf.py`, responsável por montar o
+arquivo. Importar esses módulos não inicia interação nem abre o banco.
+
+As funções usadas anteriormente a partir de `main` continuam disponíveis como
+importações. Nos testes que simulam falhas, as dependências são substituídas no
+módulo em que são chamadas (`terminal_orcamentos` ou `terminal_clientes`).
+A refatoração não altera o esquema do banco, os cálculos ou as dependências.
 
 ## Salvar e consultar orçamentos
 
